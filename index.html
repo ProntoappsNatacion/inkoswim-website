@@ -648,12 +648,21 @@
       requestAnimationFrame(tick);
       const t = ms * .001;
 
-      // 3D wave deformation — swimming undulation
+      // SWIMMING MOTION: figure translates + rotates like actual stroke
+      // Arm stroke cycle ~2s: body rolls side-to-side + slight up-down
+      mesh.position.x = Math.sin(t * .9) * .18;           // side sway (arm reach)
+      mesh.position.y = Math.sin(t * 1.8) * .06;          // small vertical kick
+      mesh.rotation.z = Math.sin(t * .9) * .04;           // body roll with stroke
+      mesh.rotation.y = Math.sin(t * .14) * .06 + (tx * .15); // mouse + breathing yaw
+      mesh.rotation.x = Math.cos(t * .11) * .025 + (-ty * .08);
+
+      // 3D water distortion — waves travel forward (directional current)
       for (let i = 0; i < pos.count; i++) {
         const x = origX[i], y = origY[i];
-        const z = Math.sin(x * 1.7 + t * 1.35) * .12
-                + Math.cos(y * 1.15 + t * .88) * .08
-                + Math.sin((x - y) * .95 + t * .58) * .04;
+        // Waves travel in -x direction (swimmer moves through water)
+        const z = Math.sin(x * 2.2 - t * 2.0) * .09        // main forward wave
+                + Math.cos(y * 1.4 + t * .7) * .045         // cross-body ripple
+                + Math.sin((x + y) * 1.1 - t * 1.2) * .025; // turbulence
         pos.setZ(i, z);
       }
       pos.needsUpdate = true;
@@ -671,29 +680,28 @@
       // Smooth camera parallax on mouse
       cam.position.x += (tx * .3 - cam.position.x) * .04;
       cam.position.y += (-ty * .2 - cam.position.y) * .04;
-      cam.lookAt(0, 0, 0);
-
-      // Slow breathing tilt for depth
-      mesh.rotation.y = Math.sin(t * .13) * .065;
-      mesh.rotation.x = Math.cos(t * .10) * .032;
+      cam.lookAt(scene.position);
 
       renderer.render(scene, cam);
     }
     tick(0);
   })();
 
-  // REVEAL
-  const obs = new IntersectionObserver(es => {
-    es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); obs.unobserve(e.target); } });
-  }, { threshold: .05, rootMargin: '0px 0px -20px 0px' });
-  document.querySelectorAll('.rev').forEach(el => obs.observe(el));
-  // Force-reveal elements already in viewport on initial load / hash nav
-  requestAnimationFrame(() => {
-    document.querySelectorAll('.rev:not(.in)').forEach(el => {
-      const r = el.getBoundingClientRect();
-      if (r.top < window.innerHeight && r.bottom > 0) el.classList.add('in');
-    });
-  });
+  // REVEAL — scroll-snap aware (IO is too slow for mandatory snap)
+  const snapSections = Array.from(document.querySelectorAll('.scene, .s-metodo'));
+  function revealSection(idx) {
+    const s = snapSections[idx];
+    if (s) s.querySelectorAll('.rev:not(.in)').forEach(el => el.classList.add('in'));
+  }
+  revealSection(0); // S1 on load
+  let snapT;
+  document.addEventListener('scroll', () => {
+    clearTimeout(snapT);
+    snapT = setTimeout(() => {
+      const idx = Math.round(document.documentElement.scrollTop / window.innerHeight);
+      revealSection(idx);
+    }, 80);
+  }, { passive: true });
 
   // FORM
   document.getElementById('form').addEventListener('submit', function(e) {

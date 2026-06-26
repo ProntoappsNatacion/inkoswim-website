@@ -103,6 +103,18 @@
     @keyframes fadeUp { from { opacity: 0; transform: translateY(22px); } to { opacity: 1; transform: translateY(0); } }
     @keyframes fadeIn { to { opacity: 1; } }
 
+    /* ── POLYGON PULSE (S3-S5) ── */
+    @keyframes mp-outer  { 0%,100%{transform:scale(1)   rotate(0deg);  opacity:inherit} 50%{transform:scale(1.06) rotate(4deg)} }
+    @keyframes mp-mid    { 0%,100%{transform:scale(1)   rotate(0deg);  opacity:inherit} 50%{transform:scale(1.08) rotate(-5deg)} }
+    @keyframes mp-inner  { 0%,100%{transform:scale(1)   rotate(0deg);  opacity:inherit} 50%{transform:scale(1.12) rotate(6deg)} }
+    @keyframes mp-core   { 0%,100%{transform:scale(1);  filter:brightness(1)} 50%{transform:scale(1.25); filter:brightness(2) drop-shadow(0 0 18px var(--c))} }
+
+    .mp-1 { animation: mp-outer  6s ease-in-out infinite; }
+    .mp-2 { animation: mp-mid    5s ease-in-out infinite 0.8s; }
+    .mp-3 { animation: mp-inner  4s ease-in-out infinite 1.4s; }
+    .mp-4 { animation: mp-core   2.8s ease-in-out infinite 0.3s; }
+    .mp-5,.mp-6,.mp-7 { animation: mp-outer 7s ease-in-out infinite; }
+
     /* ══════════════════════════════════
        S2 — STATEMENT
     ══════════════════════════════════ */
@@ -346,11 +358,14 @@
     #wa svg { width: 24px; height: 24px; fill: #fff; }
 
     /* ── REVEAL ── */
-    .rev { opacity: 0; transform: translateY(24px); transition: opacity .8s cubic-bezier(.23,1,.32,1), transform .8s cubic-bezier(.23,1,.32,1); }
-    .rev.d1 { transition-delay: .12s; }
-    .rev.d2 { transition-delay: .26s; }
-    .rev.d3 { transition-delay: .42s; }
+    .rev { opacity: 0; transform: translateY(32px) scale(.97); transition: opacity .9s cubic-bezier(.23,1,.32,1), transform .9s cubic-bezier(.23,1,.32,1); }
+    .rev.d1 { transition-delay: .14s; }
+    .rev.d2 { transition-delay: .30s; }
+    .rev.d3 { transition-delay: .50s; }
     .rev.in { opacity: 1; transform: none; }
+    /* Stat number count-up animation */
+    @keyframes count-glow { 0%{text-shadow:none} 60%{text-shadow:0 0 40px var(--c)} 100%{text-shadow:none} }
+    .s6-num.counted { animation: count-glow 1.2s ease-out forwards; }
 
     /* ── MOBILE ── */
     @media (max-width: 860px) {
@@ -631,20 +646,22 @@
       requestAnimationFrame(tick);
       const t = ms * .001;
 
-      // SWIMMING MOTION: big body translation + rotation so figure clearly swims
-      // Freestyle stroke cycle: arms alternate ~1.2s period, body rolls 30-40deg
-      const stroke = Math.sin(t * 1.2);                    // main stroke cycle
-      mesh.position.x = stroke * .38;                      // strong side-to-side (arm reach)
-      mesh.position.y = Math.sin(t * 2.4) * .12;          // kick (2x stroke freq)
-      mesh.rotation.z = stroke * .14;                      // deep body roll per stroke
-      mesh.rotation.y = Math.sin(t * .18) * .08 + tx * .18; // gentle breathing yaw + mouse
-      mesh.rotation.x = Math.cos(t * .14) * .04 + (-ty * .1);
+      // SWIMMING PATH: Inko TRAVELS horizontally across the scene (right→left→right)
+      // swim period ~14s so one full lap is slow and cinematic
+      const lap   = t * 0.22;                              // lap speed
+      const swim  = Math.sin(lap);                         // -1 to +1, position in lane
+      const vel   = Math.cos(lap);                         // velocity (sign = direction)
 
-      // Subtle water distortion - keep it gentle so body motion reads clearly
+      mesh.position.x = swim * 2.0;                        // crosses -2 to +2 in 3D space
+      mesh.position.y = Math.sin(lap * 2) * 0.22;         // kick (2x swim freq)
+      mesh.rotation.z = -vel * 0.13;                       // rolls INTO direction of travel
+      mesh.rotation.y = vel * 0.08 + tx * .18;            // face direction + mouse
+      mesh.rotation.x = Math.cos(lap * 1.1) * 0.04 + (-ty * .1);
+
+      // Minimal vertex distortion — just a hint of water surface, not paper shaking
       for (let i = 0; i < pos.count; i++) {
         const x = origX[i], y = origY[i];
-        const z = Math.sin(x * 1.8 - t * 1.6) * .045     // gentle forward wave
-                + Math.cos(y * 1.2 + t * .5) * .022;      // cross ripple
+        const z = Math.sin(x * 1.4 - t * 1.2) * .028 + Math.cos(y * 1.0 + t * .4) * .014;
         pos.setZ(i, z);
       }
       pos.needsUpdate = true;
@@ -669,28 +686,48 @@
     tick(0);
   })();
 
-  // REVEAL — dual strategy: scrollend (fires after snap settles) + IntersectionObserver fallback
+  // ── REVEAL ──
   function revealEl(el) { el.classList.add('in'); }
 
-  // IntersectionObserver: fires when section is ≥50% visible (reliable for full-screen sections)
+  // Stat counter for S6
+  function animateStat(el) {
+    const text = el.textContent.trim();
+    const num = parseFloat(text);
+    if (isNaN(num)) return;
+    const suffix = text.replace(String(Math.round(num)), '');
+    let start = null;
+    const dur = 1200;
+    function frame(ts) {
+      if (!start) start = ts;
+      const progress = Math.min((ts - start) / dur, 1);
+      const ease = 1 - Math.pow(1 - progress, 3);
+      el.textContent = Math.round(num * ease) + suffix;
+      if (progress < 1) requestAnimationFrame(frame);
+      else { el.textContent = text; el.classList.add('counted'); }
+    }
+    requestAnimationFrame(frame);
+  }
+
+  function revealSection(s) {
+    s.querySelectorAll('.rev:not(.in)').forEach(revealEl);
+    s.querySelectorAll('.s6-num:not(.counted)').forEach(animateStat);
+  }
+
+  // IO: fires when section ≥45% visible
   const io = new IntersectionObserver(entries => {
-    entries.forEach(e => {
-      if (e.isIntersecting) e.target.querySelectorAll('.rev:not(.in)').forEach(revealEl);
-    });
+    entries.forEach(e => { if (e.isIntersecting) revealSection(e.target); });
   }, { threshold: 0.45 });
   document.querySelectorAll('.scene, .s-metodo').forEach(s => io.observe(s));
 
-  // scrollend fires after snap completes — zero debounce needed
+  // scrollend: fires after snap settles — most reliable trigger
   const onSnapDone = () => {
     const idx = Math.round(document.documentElement.scrollTop / window.innerHeight);
-    const sections = document.querySelectorAll('.scene, .s-metodo');
-    const s = sections[idx];
-    if (s) s.querySelectorAll('.rev:not(.in)').forEach(revealEl);
+    const s = document.querySelectorAll('.scene, .s-metodo')[idx];
+    if (s) revealSection(s);
   };
   if ('onscrollend' in document) {
     document.addEventListener('scrollend', onSnapDone);
   } else {
-    // Fallback for browsers without scrollend
     let t; document.addEventListener('scroll', () => { clearTimeout(t); t = setTimeout(onSnapDone, 180); }, { passive: true });
   }
 

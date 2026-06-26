@@ -52,11 +52,10 @@
       position: absolute; inset: 0;
       background: linear-gradient(110deg, #020c18 0%, #082540 45%, #0d3858 100%);
     }
-    .s1-pool img {
+    #hero-canvas {
       width: 100%; height: 100%;
-      object-fit: cover; object-position: 65% 15%;
+      display: block;
       mix-blend-mode: multiply;
-      opacity: .9;
     }
     /* dark left so text reads, fade bottom */
     .s1-veil {
@@ -400,7 +399,7 @@
 <!-- ══ S1: HERO ══ -->
 <section class="scene" id="s1">
   <div class="s1-pool">
-    <img src="assets/inko-abstract.jpg" alt="" loading="eager">
+    <canvas id="hero-canvas"></canvas>
   </div>
   <div class="s1-veil"></div>
   <div class="s1-content">
@@ -579,7 +578,110 @@
   </div>
 </section>
 
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 <script>
+  // THREE.JS HERO — Inko nadando en 3D
+  (function() {
+    const can = document.getElementById('hero-canvas');
+    if (!can || !window.THREE) return;
+
+    const W = window.innerWidth, H = window.innerHeight;
+    const renderer = new THREE.WebGLRenderer({ canvas: can, antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(W, H);
+
+    const scene = new THREE.Scene();
+    const cam = new THREE.PerspectiveCamera(52, W / H, 0.1, 100);
+    cam.position.z = 4.2;
+
+    // Swimmer mesh — high poly plane for wave deformation
+    const geo = new THREE.PlaneGeometry(6.8, 5.6, 90, 75);
+    const pos = geo.attributes.position;
+    const origX = new Float32Array(pos.count);
+    const origY = new Float32Array(pos.count);
+    for (let i = 0; i < pos.count; i++) {
+      origX[i] = pos.getX(i);
+      origY[i] = pos.getY(i);
+    }
+    const tex = new THREE.TextureLoader().load('assets/inko-abstract.jpg');
+    const mat = new THREE.MeshBasicMaterial({ map: tex });
+    const mesh = new THREE.Mesh(geo, mat);
+    scene.add(mesh);
+
+    // Cyan bubble particles
+    const N = 240;
+    const bArr = new Float32Array(N * 3);
+    const bSpeed = new Float32Array(N);
+    const bPhase = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
+      bArr[i*3]   = (Math.random() - .5) * 10;
+      bArr[i*3+1] = (Math.random() - .5) * 7;
+      bArr[i*3+2] = Math.random() * 2 - 1;
+      bSpeed[i]   = .005 + Math.random() * .013;
+      bPhase[i]   = Math.random() * Math.PI * 2;
+    }
+    const bGeo = new THREE.BufferGeometry();
+    bGeo.setAttribute('position', new THREE.BufferAttribute(bArr, 3));
+    const bMat = new THREE.PointsMaterial({
+      color: 0x00C9FF, size: .025, transparent: true, opacity: .5,
+      sizeAttenuation: true
+    });
+    scene.add(new THREE.Points(bGeo, bMat));
+
+    // Mouse parallax
+    let tx = 0, ty = 0;
+    document.addEventListener('mousemove', e => {
+      tx = (e.clientX / innerWidth  - .5) * .9;
+      ty = (e.clientY / innerHeight - .5) * .6;
+    });
+
+    // Resize
+    window.addEventListener('resize', () => {
+      const w = window.innerWidth, h = window.innerHeight;
+      renderer.setSize(w, h);
+      cam.aspect = w / h;
+      cam.updateProjectionMatrix();
+    });
+
+    // Render loop
+    function tick(ms) {
+      requestAnimationFrame(tick);
+      const t = ms * .001;
+
+      // 3D wave deformation — swimming undulation
+      for (let i = 0; i < pos.count; i++) {
+        const x = origX[i], y = origY[i];
+        const z = Math.sin(x * 1.7 + t * 1.35) * .12
+                + Math.cos(y * 1.15 + t * .88) * .08
+                + Math.sin((x - y) * .95 + t * .58) * .04;
+        pos.setZ(i, z);
+      }
+      pos.needsUpdate = true;
+
+      // Bubbles float up with gentle drift
+      const bp = bGeo.attributes.position;
+      for (let i = 0; i < N; i++) {
+        let y = bp.getY(i) + bSpeed[i];
+        const x = bp.getX(i) + Math.sin(t * .4 + bPhase[i]) * .0015;
+        if (y > 3.5) y = -3.5;
+        bp.setY(i, y); bp.setX(i, x);
+      }
+      bp.needsUpdate = true;
+
+      // Smooth camera parallax on mouse
+      cam.position.x += (tx * .3 - cam.position.x) * .04;
+      cam.position.y += (-ty * .2 - cam.position.y) * .04;
+      cam.lookAt(0, 0, 0);
+
+      // Slow breathing tilt for depth
+      mesh.rotation.y = Math.sin(t * .13) * .065;
+      mesh.rotation.x = Math.cos(t * .10) * .032;
+
+      renderer.render(scene, cam);
+    }
+    tick(0);
+  })();
+
   // REVEAL
   const obs = new IntersectionObserver(es => {
     es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); obs.unobserve(e.target); } });
